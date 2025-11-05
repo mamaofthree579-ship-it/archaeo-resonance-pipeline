@@ -2,7 +2,6 @@ import streamlit as st
 import geopandas as gpd
 import pandas as pd
 from src.arp.io import load_candidates_geojson
-import black
 
 st.set_page_config(page_title="Archaeo Resonance Explorer", layout="wide")
 st.title("Archaeo-Resonance Explorer")
