@@ -25,7 +25,7 @@ jobs:
       - name: Lint
         run: |
           pip install flake8 black isort
-          black --check .
+          black --check-only .
           flake8 .
           isort --check-only .
       - name: Run tests
