@@ -25,6 +25,7 @@ jobs:
       - name: Lint
         run: |
           pip install flake8 black isort
-      - name: Run --check-only
-        run: pytest tests/
-        
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src  # Add src to Python path
+        run: pytest tests/ --disable-warnings
