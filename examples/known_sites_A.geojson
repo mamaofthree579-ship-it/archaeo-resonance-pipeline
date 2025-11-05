@@ -1,0 +1,33 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "G": 0.75,
+        "H": 0.64,
+        "M": 0.70,
+        "L": 0.58,
+        "Ssym": 0.35
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-118.0, 34.0]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "G": 0.60,
+        "H": 0.55,
+        "M": 0.50,
+        "L": 0.62,
+        "Ssym": 0.40
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-118.5, 34.5]
+      }
+    }
+  ]
+}
