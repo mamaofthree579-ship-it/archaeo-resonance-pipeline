@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+.venv/
+*.sqlite
+*.log
+.DS_Store
+streamlit_app/assets/*
+artifacts/
+models/
