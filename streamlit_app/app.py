@@ -16,6 +16,6 @@ with st.sidebar:
     theta = st.slider("theta (bias)", 0.0, 1.0, 0.5, 0.01)
     lam = st.slider("lambda (sigmoid)", 0.1, 10.0, 6.0, 0.1)
 
-candidates = load_candidates_geojson('examples/known_sites.geojson')
+candidates = load_candidates_geojson("examples/known_sites.geojson")
 st.write("## Candidate map & list")
 st.dataframe(pd.DataFrame(candidates))
