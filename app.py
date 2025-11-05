@@ -24,19 +24,33 @@ with st.sidebar:
     theta = st.slider("theta (bias)", 0.0, 1.0, 0.5, 0.01)
     lam = st.slider("lambda (sigmoid)", 0.1, 10.0, 6.0, 0.1)
 
+    # File upload or example selection
+    uploaded_file = st.file_uploader("Upload candidate sites (GeoJSON or CSV)", type=["geojson", "csv"])
+    example_options = {
+        "Example Site A": "examples/known_sites_A.geojson",
+        "Example Site B": "examples/known_sites_B.geojson"
+    }
+    selected_example = st.selectbox("Or choose an example", list(example_options.keys()))
+
 # Built-in loader function
-def load_candidates_geojson(path: str):
+def load_candidates_geojson(path_or_file):
     try:
-        gdf = gpd.read_file(path)
+        if hasattr(path_or_file, 'read'):
+            gdf = gpd.read_file(path_or_file)
+        else:
+            gdf = gpd.read_file(path_or_file)
         if 'geometry' in gdf.columns:
             gdf['lat'] = gdf.geometry.y
             gdf['lon'] = gdf.geometry.x
         return gdf
     except Exception:
-        return pd.read_csv(path)
+        return pd.read_csv(path_or_file)
 
-# Load candidates
-candidates = load_candidates_geojson("examples/known_sites.geojson")
+# Load candidates based on upload or example
+if uploaded_file is not None:
+    candidates = load_candidates_geojson(uploaded_file)
+else:
+    candidates = load_candidates_geojson(example_options[selected_example])
 
 # Compute S(x) for each candidate dynamically
 params = {"w": [w_g, w_h, w_m, w_l, w_s], "theta": theta, "lam": lam}
