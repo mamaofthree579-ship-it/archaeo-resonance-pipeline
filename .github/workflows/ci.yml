@@ -25,8 +25,8 @@ jobs:
       - name: Lint
         run: |
           pip install flake8 black isort
-          black --check-only .
+          black .
           flake8 .
-          isort --check-only .
-      - name: Run tests
+          isort .
+      - name: Run --check-only
         run: pytest tests/ --disable-warnings
