@@ -1,0 +1,14 @@
+streamlit>=1.20
+geopandas
+pandas
+numpy
+scipy
+scikit‑learn
+xgboost
+lightgbm
+hdbscan
+shap
+pytest
+flake8
+black
+isort
