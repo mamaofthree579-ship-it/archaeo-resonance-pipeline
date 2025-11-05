@@ -12,4 +12,4 @@ pytest
 flake8
 black
 isort
-folium
+streamlit-folium
