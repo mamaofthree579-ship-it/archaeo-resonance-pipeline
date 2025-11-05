@@ -3,7 +3,7 @@ geopandas
 pandas
 numpy
 scipy
-scikit‑learn
+scikit-learn
 xgboost
 lightgbm
 hdbscan
