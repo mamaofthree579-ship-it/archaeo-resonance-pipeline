@@ -58,7 +58,7 @@ def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
 
 
 # ---------------------------
-# App header and controls
+# Header and file controls
 # ---------------------------
 st.title("🌍 Archaeo-Resonance Explorer")
 
@@ -66,7 +66,6 @@ st.markdown(
     "Upload your candidate site data (`.geojson` or `.csv`) or choose a built-in example to compute and visualize site-likelihood scores."
 )
 
-# Sidebar fusion control sliders
 st.sidebar.header("Fusion Controls")
 w_g = st.sidebar.slider("w_g (geometry)", 0.0, 1.0, 0.18)
 w_h = st.sidebar.slider("w_h (harmonics)", 0.0, 1.0, 0.26)
@@ -76,9 +75,6 @@ w_s = st.sidebar.slider("w_s (symbolic)", 0.0, 1.0, 0.16)
 theta = st.sidebar.slider("θ (bias)", 0.0, 1.0, 0.5)
 lam = st.sidebar.slider("λ (sigmoid)", 0.1, 10.0, 6.0)
 
-# ---------------------------
-# File upload or example
-# ---------------------------
 uploaded = st.file_uploader("Upload candidate sites (.geojson or .csv)")
 example_options = {
     "Example A (GeoJSON)": "examples/known_sites_A.geojson",
@@ -99,7 +95,12 @@ elif selected_example != "None":
     st.session_state["image_path"] = os.path.splitext(example_options[selected_example])[0] + ".png"
 
 # ---------------------------
-# Compute & visualize
+# Tabs for main content
+# ---------------------------
+tabs = st.tabs(["🗺️ Map View", "📊 Analytics", "ℹ️ About"])
+
+# ---------------------------
+# Main app logic
 # ---------------------------
 candidates = st.session_state["candidates"]
 
@@ -114,104 +115,96 @@ if candidates is not None:
             for col in missing:
                 candidates[col] = np.random.uniform(0.3, 0.8, size=len(candidates))
             st.session_state["candidates"] = candidates
-            st.success("Added missing columns with default random values.")
+            st.success("Added missing columns with random default values.")
             missing = []
 
     if not missing:
         candidates["S"] = compute_S(
-            candidates["G"],
-            candidates["H"],
-            candidates["M"],
-            candidates["L"],
-            candidates["Ssym"],
-            w_g,
-            w_h,
-            w_m,
-            w_l,
-            w_s,
-            theta,
-            lam,
+            candidates["G"], candidates["H"], candidates["M"],
+            candidates["L"], candidates["Ssym"],
+            w_g, w_h, w_m, w_l, w_s, theta, lam,
         )
 
         st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
-        st.dataframe(candidates[required_cols + ["S"]])
 
-        # ---------------------------
-        # Visualization toggle (persistent)
-        # ---------------------------
-        st.subheader("🗺️ Map Visualization")
-        st.session_state["map_mode"] = st.radio(
-            "Choose map mode:",
-            ["Scatter Map", "Heatmap"],
-            horizontal=True,
-            index=0 if st.session_state["map_mode"] == "Scatter Map" else 1,
-        )
+        # ------------- MAP VIEW TAB -------------
+        with tabs[0]:
+            st.subheader("Geospatial Visualization")
+            st.session_state["map_mode"] = st.radio(
+                "Choose map mode:",
+                ["Scatter Map", "Heatmap"],
+                horizontal=True,
+                index=0 if st.session_state["map_mode"] == "Scatter Map" else 1,
+            )
 
-        # ---------------------------
-        # Map rendering
-        # ---------------------------
-        if "geometry" in candidates:
-            try:
-                gdf = gpd.GeoDataFrame(candidates)
-                if gdf.crs is None:
-                    gdf.set_crs(epsg=4326, inplace=True)
-                if not all(gdf.geometry.geom_type == "Point"):
-                    gdf["geometry"] = gdf.geometry.centroid
+            if "geometry" in candidates:
+                try:
+                    gdf = gpd.GeoDataFrame(candidates)
+                    if gdf.crs is None:
+                        gdf.set_crs(epsg=4326, inplace=True)
+                    if not all(gdf.geometry.geom_type == "Point"):
+                        gdf["geometry"] = gdf.geometry.centroid
+                    gdf["lat"] = gdf.geometry.y
+                    gdf["lon"] = gdf.geometry.x
 
-                gdf["lat"] = gdf.geometry.y
-                gdf["lon"] = gdf.geometry.x
+                    if st.session_state["map_mode"] == "Scatter Map":
+                        fig = px.scatter_mapbox(
+                            gdf,
+                            lat="lat",
+                            lon="lon",
+                            color="S",
+                            color_continuous_scale="Viridis",
+                            size="S",
+                            zoom=6,
+                            mapbox_style="open-street-map",
+                            title="Site Likelihood Scatter Map",
+                        )
+                    else:
+                        fig = px.density_mapbox(
+                            gdf,
+                            lat="lat",
+                            lon="lon",
+                            z="S",
+                            radius=20,
+                            center=dict(lat=gdf["lat"].mean(), lon=gdf["lon"].mean()),
+                            zoom=6,
+                            mapbox_style="open-street-map",
+                            color_continuous_scale="YlOrRd",
+                            title="Site Likelihood Heatmap",
+                        )
 
-                if st.session_state["map_mode"] == "Scatter Map":
-                    fig = px.scatter_mapbox(
-                        gdf,
-                        lat="lat",
-                        lon="lon",
-                        color="S",
-                        color_continuous_scale="Viridis",
-                        size="S",
-                        zoom=6,
-                        title="Site Likelihood Scatter Map",
-                        mapbox_style="open-street-map",
-                    )
-                else:
-                    fig = px.density_mapbox(
-                        gdf,
-                        lat="lat",
-                        lon="lon",
-                        z="S",
-                        radius=20,
-                        center=dict(lat=gdf["lat"].mean(), lon=gdf["lon"].mean()),
-                        zoom=6,
-                        mapbox_style="open-street-map",
-                        color_continuous_scale="YlOrRd",
-                        title="Site Likelihood Heatmap",
-                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"Could not plot map: {e}")
+            else:
+                st.info("No geometry found — showing only table view.")
 
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.warning(f"Could not plot map: {e}")
-        else:
-            st.info("No geometry found — showing only table view.")
+            # Optional PNG overlay
+            if st.session_state.get("image_path") and os.path.exists(st.session_state["image_path"]):
+                st.image(Image.open(st.session_state["image_path"]), caption="Associated Site Map", use_container_width=True)
 
-        # Optional PNG overlay
-        if st.session_state.get("image_path") and os.path.exists(st.session_state["image_path"]):
-            st.image(Image.open(st.session_state["image_path"]), caption="Associated Site Map", use_container_width=True)
+        # ------------- ANALYTICS TAB -------------
+        with tabs[1]:
+            st.subheader("Statistical Overview")
+            st.dataframe(candidates[required_cols + ["S"]])
+            st.markdown("#### Distribution of Likelihood Scores")
+            st.plotly_chart(px.histogram(candidates, x="S", nbins=20, color_discrete_sequence=["#4B9CD3"]), use_container_width=True)
+            st.markdown("#### Component Correlations")
+            st.plotly_chart(px.scatter_matrix(candidates, dimensions=required_cols + ["S"], color="S"), use_container_width=True)
 
-        # ---------------------------
-        # Download results
-        # ---------------------------
-        st.subheader("💾 Export Results")
+            # Export section
+            st.markdown("---")
+            st.subheader("💾 Export Results")
 
-        csv_buffer = BytesIO()
-        candidates.to_csv(csv_buffer, index=False)
-        st.download_button(
-            label="⬇️ Download as CSV",
-            data=csv_buffer.getvalue(),
-            file_name="archaeo_resonance_results.csv",
-            mime="text/csv",
-        )
+            csv_buffer = BytesIO()
+            candidates.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="⬇️ Download as CSV",
+                data=csv_buffer.getvalue(),
+                file_name="archaeo_resonance_results.csv",
+                mime="text/csv",
+            )
 
-        if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates)
                 gdf.set_crs(epsg=4326, inplace=True)
@@ -224,5 +217,24 @@ if candidates is not None:
                 )
             except Exception as e:
                 st.warning(f"Could not export GeoJSON: {e}")
+
+        # ------------- ABOUT TAB -------------
+        with tabs[2]:
+            st.markdown("""
+            ### ℹ️ About Archaeo-Resonance Explorer
+            This experimental tool integrates multiple archaeological sensing modalities — geometry, harmonics, magnetic, LIDAR, and symbolic — to compute a unified **site-likelihood score** using a logistic fusion model.
+
+            #### Fusion Formula
+            \[
+            S = \frac{1}{1 + e^{-\lambda (w_g G + w_h H + w_m M + w_l L + w_s S_{sym} - \theta)}}
+            \]
+
+            - **Weights (`w_g` – `w_s`)** represent modality influence.  
+            - **θ (bias)** adjusts sensitivity to detection threshold.  
+            - **λ (sigmoid)** controls the steepness of the logistic curve.
+
+            ---
+            **Developed for exploratory research** in archaeological site prediction and cross-modality resonance modeling.
+            """)
 else:
     st.info("📂 Upload a file or choose an example to begin.")
