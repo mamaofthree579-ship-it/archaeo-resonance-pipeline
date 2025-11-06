@@ -13,3 +13,4 @@ flake8
 black
 isort
 streamlit-folium
+plotly.express
