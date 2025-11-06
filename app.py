@@ -9,16 +9,18 @@ from shapely.geometry import Point
 from PIL import Image
 from io import BytesIO
 
+st.set_page_config(page_title="Archaeo-Resonance Explorer", layout="wide")
+
 # ---------------------------
 # Utility: Load GeoJSON or CSV
 # ---------------------------
+@st.cache_data(show_spinner=False)
 def load_candidates(path_or_file):
     """Load candidate sites from GeoJSON, JSON, or CSV."""
     if path_or_file is None:
         return None
 
     try:
-        # Handle uploaded file-like object or file path
         if hasattr(path_or_file, "read"):
             name = getattr(path_or_file, "name", "uploaded")
             if name.endswith(".geojson") or name.endswith(".json"):
@@ -56,7 +58,7 @@ def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
 
 
 # ---------------------------
-# Streamlit UI
+# App header and controls
 # ---------------------------
 st.title("🌍 Archaeo-Resonance Explorer")
 
@@ -64,7 +66,7 @@ st.markdown(
     "Upload your candidate site data (`.geojson` or `.csv`) or choose a built-in example to compute and visualize site-likelihood scores."
 )
 
-# Fusion control sliders
+# Sidebar fusion control sliders
 st.sidebar.header("Fusion Controls")
 w_g = st.sidebar.slider("w_g (geometry)", 0.0, 1.0, 0.18)
 w_h = st.sidebar.slider("w_h (harmonics)", 0.0, 1.0, 0.26)
@@ -74,7 +76,9 @@ w_s = st.sidebar.slider("w_s (symbolic)", 0.0, 1.0, 0.16)
 theta = st.sidebar.slider("θ (bias)", 0.0, 1.0, 0.5)
 lam = st.sidebar.slider("λ (sigmoid)", 0.1, 10.0, 6.0)
 
-# Upload or select example
+# ---------------------------
+# File upload or example
+# ---------------------------
 uploaded = st.file_uploader("Upload candidate sites (.geojson or .csv)")
 example_options = {
     "Example A (GeoJSON)": "examples/known_sites_A.geojson",
@@ -82,20 +86,23 @@ example_options = {
 }
 selected_example = st.selectbox("Or choose an example", ["None"] + list(example_options.keys()))
 
-# Determine input source
+if "candidates" not in st.session_state:
+    st.session_state["candidates"] = None
+if "map_mode" not in st.session_state:
+    st.session_state["map_mode"] = "Scatter Map"
+
 if uploaded:
-    candidates = load_candidates(uploaded)
-    image_path = None
+    st.session_state["candidates"] = load_candidates(uploaded)
+    st.session_state["image_path"] = None
 elif selected_example != "None":
-    candidates = load_candidates(example_options[selected_example])
-    image_path = os.path.splitext(example_options[selected_example])[0] + ".png"
-else:
-    candidates = None
-    image_path = None
+    st.session_state["candidates"] = load_candidates(example_options[selected_example])
+    st.session_state["image_path"] = os.path.splitext(example_options[selected_example])[0] + ".png"
 
 # ---------------------------
 # Compute & visualize
 # ---------------------------
+candidates = st.session_state["candidates"]
+
 if candidates is not None:
     required_cols = ["G", "H", "M", "L", "Ssym"]
     missing = [c for c in required_cols if c not in candidates.columns]
@@ -106,6 +113,7 @@ if candidates is not None:
         if st.button("🧩 Auto-fix missing columns"):
             for col in missing:
                 candidates[col] = np.random.uniform(0.3, 0.8, size=len(candidates))
+            st.session_state["candidates"] = candidates
             st.success("Added missing columns with default random values.")
             missing = []
 
@@ -128,24 +136,32 @@ if candidates is not None:
         st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
         st.dataframe(candidates[required_cols + ["S"]])
 
-        # Visualization toggle
+        # ---------------------------
+        # Visualization toggle (persistent)
+        # ---------------------------
         st.subheader("🗺️ Map Visualization")
-        map_mode = st.radio("Choose map mode:", ["Scatter Map", "Heatmap"], horizontal=True)
+        st.session_state["map_mode"] = st.radio(
+            "Choose map mode:",
+            ["Scatter Map", "Heatmap"],
+            horizontal=True,
+            index=0 if st.session_state["map_mode"] == "Scatter Map" else 1,
+        )
 
+        # ---------------------------
+        # Map rendering
+        # ---------------------------
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates)
                 if gdf.crs is None:
                     gdf.set_crs(epsg=4326, inplace=True)
-
-                # If not points, use centroids
                 if not all(gdf.geometry.geom_type == "Point"):
                     gdf["geometry"] = gdf.geometry.centroid
 
                 gdf["lat"] = gdf.geometry.y
                 gdf["lon"] = gdf.geometry.x
 
-                if map_mode == "Scatter Map":
+                if st.session_state["map_mode"] == "Scatter Map":
                     fig = px.scatter_mapbox(
                         gdf,
                         lat="lat",
@@ -158,7 +174,6 @@ if candidates is not None:
                         mapbox_style="open-street-map",
                     )
                 else:
-                    # Create heatmap
                     fig = px.density_mapbox(
                         gdf,
                         lat="lat",
@@ -178,12 +193,12 @@ if candidates is not None:
         else:
             st.info("No geometry found — showing only table view.")
 
-        # Optional PNG overlay preview
-        if image_path and os.path.exists(image_path):
-            st.image(Image.open(image_path), caption="Associated Site Map", use_container_width=True)
+        # Optional PNG overlay
+        if st.session_state.get("image_path") and os.path.exists(st.session_state["image_path"]):
+            st.image(Image.open(st.session_state["image_path"]), caption="Associated Site Map", use_container_width=True)
 
         # ---------------------------
-        # Download results section
+        # Download results
         # ---------------------------
         st.subheader("💾 Export Results")
 
@@ -209,6 +224,5 @@ if candidates is not None:
                 )
             except Exception as e:
                 st.warning(f"Could not export GeoJSON: {e}")
-
 else:
     st.info("📂 Upload a file or choose an example to begin.")
