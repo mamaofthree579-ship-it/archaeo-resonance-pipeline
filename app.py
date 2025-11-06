@@ -7,6 +7,7 @@ import plotly.express as px
 import os
 from shapely.geometry import Point
 from PIL import Image
+from io import BytesIO
 
 # ---------------------------
 # Utility: Load GeoJSON or CSV
@@ -23,7 +24,7 @@ def load_candidates(path_or_file):
             if name.endswith(".geojson") or name.endswith(".json"):
                 data = json.load(path_or_file)
                 gdf = gpd.GeoDataFrame.from_features(data["features"])
-                gdf.crs = "EPSG:4326"  # default WGS84
+                gdf.crs = "EPSG:4326"
                 return gdf
             elif name.endswith(".csv"):
                 return pd.read_csv(path_or_file)
@@ -162,5 +163,35 @@ if candidates is not None:
         # Optional PNG overlay preview
         if image_path and os.path.exists(image_path):
             st.image(Image.open(image_path), caption="Associated Site Map", use_container_width=True)
+
+        # ---------------------------
+        # Download results section
+        # ---------------------------
+        st.subheader("💾 Export Results")
+
+        csv_buffer = BytesIO()
+        candidates.to_csv(csv_buffer, index=False)
+        st.download_button(
+            label="⬇️ Download as CSV",
+            data=csv_buffer.getvalue(),
+            file_name="archaeo_resonance_results.csv",
+            mime="text/csv",
+        )
+
+        # If geometry present, also allow GeoJSON download
+        if "geometry" in candidates:
+            try:
+                gdf = gpd.GeoDataFrame(candidates)
+                gdf.set_crs(epsg=4326, inplace=True)
+                geojson_bytes = gdf.to_json().encode("utf-8")
+                st.download_button(
+                    label="🌐 Download as GeoJSON",
+                    data=geojson_bytes,
+                    file_name="archaeo_resonance_results.geojson",
+                    mime="application/geo+json",
+                )
+            except Exception as e:
+                st.warning(f"Could not export GeoJSON: {e}")
+
 else:
     st.info("📂 Upload a file or choose an example to begin.")
