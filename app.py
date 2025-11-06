@@ -1,101 +1,142 @@
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
-import folium
-from streamlit_folium import st_folium
-from src.arp.fusion import compute_S
-from pathlib import Path
-import sys
+import json
+import numpy as np
+import plotly.express as px
 
-# Ensure src is in sys.path for local execution
-sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
+# ---------------------------
+# Utility: Load GeoJSON or CSV
+# ---------------------------
+def load_candidates(path_or_file):
+    """Load candidate sites from GeoJSON, JSON, or CSV."""
+    if path_or_file is None:
+        return None
 
-st.set_page_config(page_title="Archaeo-Resonance Explorer", layout="wide")
-st.title("Archaeo-Resonance Explorer")
-
-# Sidebar controls
-with st.sidebar:
-    st.header("Fusion Controls")
-    w_g = st.slider("w_g (geometry)", 0.0, 1.0, 0.18, 0.01)
-    w_h = st.slider("w_h (harmonics)", 0.0, 1.0, 0.26, 0.01)
-    w_m = st.slider("w_m (magnetic)", 0.0, 1.0, 0.18, 0.01)
-    w_l = st.slider("w_l (LIDAR)", 0.0, 1.0, 0.22, 0.01)
-    w_s = st.slider("w_s (symbolic)", 0.0, 1.0, 0.16, 0.01)
-    theta = st.slider("theta (bias)", 0.0, 1.0, 0.5, 0.01)
-    lam = st.slider("lambda (sigmoid)", 0.1, 10.0, 6.0, 0.1)
-
-    # File upload or example selection
-    uploaded_file = st.file_uploader("Upload candidate sites (GeoJSON or CSV)", type=["geojson", "csv"])
-    example_options = {
-        "Example Site A": "examples/known_sites_A.geojson",
-        "Example Site B": "examples/known_sites_B.geojson"
-    }
-    selected_example = st.selectbox("Or choose an example", list(example_options.keys()))
-
-# Built-in loader function
-def load_candidates_geojson(path_or_file):
     try:
-        if hasattr(path_or_file, 'read'):
-            gdf = gpd.read_file(path_or_file)
+        # Handle uploaded file-like object or file path
+        if hasattr(path_or_file, "read"):
+            name = getattr(path_or_file, "name", "uploaded")
+            if name.endswith(".geojson") or name.endswith(".json"):
+                data = json.load(path_or_file)
+                gdf = gpd.GeoDataFrame.from_features(data["features"])
+                return gdf
+            elif name.endswith(".csv"):
+                return pd.read_csv(path_or_file)
+            else:
+                st.error("Unsupported file format. Please upload .geojson or .csv.")
+                return None
         else:
-            gdf = gpd.read_file(path_or_file)
-        if 'geometry' in gdf.columns:
-            gdf['lat'] = gdf.geometry.y
-            gdf['lon'] = gdf.geometry.x
-        return gdf
-    except Exception:
-        return pd.read_csv(path_or_file)
+            # Local file path
+            if str(path_or_file).endswith(".geojson") or str(path_or_file).endswith(".json"):
+                gdf = gpd.read_file(path_or_file)
+                return gdf
+            elif str(path_or_file).endswith(".csv"):
+                return pd.read_csv(path_or_file)
+            else:
+                st.error("Unsupported example file format.")
+                return None
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
 
-# Load candidates based on upload or example
-if uploaded_file is not None:
-    candidates = load_candidates_geojson(uploaded_file)
+
+# ---------------------------
+# Fusion score computation
+# ---------------------------
+def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
+    Lscore = (
+        w_g * G + w_h * H + w_m * M + w_l * L + w_s * Ssym
+    )
+    S = 1 / (1 + np.exp(-lam * (Lscore - theta)))
+    return S
+
+
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.title("🌍 Archaeo-Resonance Explorer")
+
+st.markdown(
+    "Upload your candidate site data (`.geojson` or `.csv`) or choose a built-in example to compute site-likelihood scores."
+)
+
+# Fusion control sliders
+st.sidebar.header("Fusion Controls")
+w_g = st.sidebar.slider("w_g (geometry)", 0.0, 1.0, 0.18)
+w_h = st.sidebar.slider("w_h (harmonics)", 0.0, 1.0, 0.26)
+w_m = st.sidebar.slider("w_m (magnetic)", 0.0, 1.0, 0.18)
+w_l = st.sidebar.slider("w_l (LIDAR)", 0.0, 1.0, 0.22)
+w_s = st.sidebar.slider("w_s (symbolic)", 0.0, 1.0, 0.16)
+theta = st.sidebar.slider("θ (bias)", 0.0, 1.0, 0.5)
+lam = st.sidebar.slider("λ (sigmoid)", 0.1, 10.0, 6.0)
+
+# Upload or select example
+uploaded = st.file_uploader("Upload candidate sites (.geojson or .csv)")
+example_options = {
+    "Example A (GeoJSON)": "examples/known_sites_A.geojson",
+    "Example B (GeoJSON)": "examples/known_sites_B.geojson",
+}
+selected_example = st.selectbox("Or choose an example", ["None"] + list(example_options.keys()))
+
+# Determine input source
+if uploaded:
+    candidates = load_candidates(uploaded)
+elif selected_example != "None":
+    candidates = load_candidates(example_options[selected_example])
 else:
-    candidates = load_candidates_geojson(example_options[selected_example])
+    candidates = None
 
-# Compute S(x) for each candidate dynamically
-params = {"w": [w_g, w_h, w_m, w_l, w_s], "theta": theta, "lam": lam}
-scores = []
-feature_contribs = {"G": [], "H": [], "M": [], "L": [], "Ssym": []}
+# ---------------------------
+# Compute & visualize
+# ---------------------------
+if candidates is not None:
+    # Ensure all required columns exist
+    required_cols = ["G", "H", "M", "L", "Ssym"]
+    missing = [c for c in required_cols if c not in candidates.columns]
+    if missing:
+        st.error(f"Missing required columns: {', '.join(missing)}")
+    else:
+        candidates["S"] = compute_S(
+            candidates["G"],
+            candidates["H"],
+            candidates["M"],
+            candidates["L"],
+            candidates["Ssym"],
+            w_g,
+            w_h,
+            w_m,
+            w_l,
+            w_s,
+            theta,
+            lam,
+        )
 
-for _, row in candidates.iterrows():
-    features = {
-        "G": row.get("G", 0.5),
-        "H": row.get("H", 0.5),
-        "M": row.get("M", 0.5),
-        "L": row.get("L", 0.5),
-        "Ssym": row.get("Ssym", 0.5),
-    }
-    scores.append(compute_S(features, params))
-    for k in features:
-        feature_contribs[k].append(features[k] * params["w"][list(features.keys()).index(k)])
+        st.success(f"Computed site likelihoods for {len(candidates)} candidates.")
 
-candidates["S"] = scores
+        # Show table
+        st.dataframe(candidates[[*required_cols, "S"]])
 
-# Show candidate table
-st.write("## Candidate Sites")
-st.dataframe(candidates)
+        # Map visualization (if coordinates available)
+        if "geometry" in candidates:
+            # GeoDataFrame from GeoJSON
+            gdf = gpd.GeoDataFrame(candidates)
+            gdf = gdf.set_geometry("geometry")
+            gdf = gdf.to_crs(epsg=4326)
 
-# Feature contribution plot
-st.write("## Feature Contributions")
-contrib_df = pd.DataFrame(feature_contribs)
-st.bar_chart(contrib_df)
-
-# Create folium map
-m = folium.Map(location=[candidates['lat'].mean(), candidates['lon'].mean()], zoom_start=6)
-for _, row in candidates.iterrows():
-    folium.CircleMarker(
-        location=[row['lat'], row['lon']],
-        radius=5 + row['S']*10,
-        color='blue',
-        fill=True,
-        fill_opacity=0.6,
-        popup=f"Score: {row['S']:.2f}"
-    ).add_to(m)
-
-st.write("## Candidate Map")
-st_folium(m, width=800, height=600)
-
-# Download GeoJSON
-if st.button("Download Candidates GeoJSON"):
-    candidates.to_file("candidates.geojson", driver="GeoJSON")
-    st.success("GeoJSON saved as candidates.geojson")
+            fig = px.scatter_mapbox(
+                gdf,
+                lat=gdf.geometry.y,
+                lon=gdf.geometry.x,
+                color="S",
+                color_continuous_scale="Viridis",
+                size="S",
+                zoom=6,
+                title="Site Likelihood Map",
+                mapbox_style="open-street-map",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("No geometry column found — skipping map view.")
+else:
+    st.info("Upload a file or choose an example to begin.")
