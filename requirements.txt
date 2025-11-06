@@ -14,3 +14,5 @@ black
 isort
 streamlit-folium
 plotly.express
+rasterio
+requests
