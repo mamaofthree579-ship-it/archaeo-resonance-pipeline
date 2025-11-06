@@ -4,6 +4,8 @@ import geopandas as gpd
 import json
 import numpy as np
 import plotly.express as px
+import os
+from PIL import Image
 
 # ---------------------------
 # Utility: Load GeoJSON or CSV
@@ -20,6 +22,7 @@ def load_candidates(path_or_file):
             if name.endswith(".geojson") or name.endswith(".json"):
                 data = json.load(path_or_file)
                 gdf = gpd.GeoDataFrame.from_features(data["features"])
+                gdf.crs = "EPSG:4326"  # Default to WGS84
                 return gdf
             elif name.endswith(".csv"):
                 return pd.read_csv(path_or_file)
@@ -30,6 +33,8 @@ def load_candidates(path_or_file):
             # Local file path
             if str(path_or_file).endswith(".geojson") or str(path_or_file).endswith(".json"):
                 gdf = gpd.read_file(path_or_file)
+                if gdf.crs is None:
+                    gdf.set_crs(epsg=4326, inplace=True)
                 return gdf
             elif str(path_or_file).endswith(".csv"):
                 return pd.read_csv(path_or_file)
@@ -80,10 +85,13 @@ selected_example = st.selectbox("Or choose an example", ["None"] + list(example_
 # Determine input source
 if uploaded:
     candidates = load_candidates(uploaded)
+    image_path = None
 elif selected_example != "None":
     candidates = load_candidates(example_options[selected_example])
+    image_path = os.path.splitext(example_options[selected_example])[0] + ".png"
 else:
     candidates = None
+    image_path = None
 
 # ---------------------------
 # Compute & visualize
@@ -118,15 +126,14 @@ if candidates is not None:
         )
 
         st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
-
-        # Show results
         st.dataframe(candidates[required_cols + ["S"]])
 
         # Map visualization (if geometry available)
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates)
-                gdf = gdf.set_geometry("geometry").to_crs(epsg=4326)
+                if gdf.crs is None:
+                    gdf.set_crs(epsg=4326, inplace=True)
 
                 fig = px.scatter_mapbox(
                     gdf,
@@ -144,5 +151,9 @@ if candidates is not None:
                 st.warning(f"Could not plot map: {e}")
         else:
             st.info("No geometry found — showing only table view.")
+
+        # Optional image preview
+        if image_path and os.path.exists(image_path):
+            st.image(Image.open(image_path), caption="Associated Site Map", use_container_width=True)
 else:
     st.info("📂 Upload a file or choose an example to begin.")
