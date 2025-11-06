@@ -61,7 +61,7 @@ def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
 st.title("🌍 Archaeo-Resonance Explorer")
 
 st.markdown(
-    "Upload your candidate site data (`.geojson` or `.csv`) or choose a built-in example to compute site-likelihood scores."
+    "Upload your candidate site data (`.geojson` or `.csv`) or choose a built-in example to compute and visualize site-likelihood scores."
 )
 
 # Fusion control sliders
@@ -128,7 +128,10 @@ if candidates is not None:
         st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
         st.dataframe(candidates[required_cols + ["S"]])
 
-        # Map visualization (handle all geometry types)
+        # Visualization toggle
+        st.subheader("🗺️ Map Visualization")
+        map_mode = st.radio("Choose map mode:", ["Scatter Map", "Heatmap"], horizontal=True)
+
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates)
@@ -139,21 +142,36 @@ if candidates is not None:
                 if not all(gdf.geometry.geom_type == "Point"):
                     gdf["geometry"] = gdf.geometry.centroid
 
-                # Extract coordinates for plotting
                 gdf["lat"] = gdf.geometry.y
                 gdf["lon"] = gdf.geometry.x
 
-                fig = px.scatter_mapbox(
-                    gdf,
-                    lat="lat",
-                    lon="lon",
-                    color="S",
-                    color_continuous_scale="Viridis",
-                    size="S",
-                    zoom=6,
-                    title="🗺️ Site Likelihood Map",
-                    mapbox_style="open-street-map",
-                )
+                if map_mode == "Scatter Map":
+                    fig = px.scatter_mapbox(
+                        gdf,
+                        lat="lat",
+                        lon="lon",
+                        color="S",
+                        color_continuous_scale="Viridis",
+                        size="S",
+                        zoom=6,
+                        title="Site Likelihood Scatter Map",
+                        mapbox_style="open-street-map",
+                    )
+                else:
+                    # Create heatmap
+                    fig = px.density_mapbox(
+                        gdf,
+                        lat="lat",
+                        lon="lon",
+                        z="S",
+                        radius=20,
+                        center=dict(lat=gdf["lat"].mean(), lon=gdf["lon"].mean()),
+                        zoom=6,
+                        mapbox_style="open-street-map",
+                        color_continuous_scale="YlOrRd",
+                        title="Site Likelihood Heatmap",
+                    )
+
                 st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.warning(f"Could not plot map: {e}")
@@ -178,7 +196,6 @@ if candidates is not None:
             mime="text/csv",
         )
 
-        # If geometry present, also allow GeoJSON download
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates)
