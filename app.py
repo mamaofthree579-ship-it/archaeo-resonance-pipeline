@@ -19,7 +19,6 @@ def load_candidates(path_or_file):
     """Load candidate sites from GeoJSON, JSON, or CSV."""
     if path_or_file is None:
         return None
-
     try:
         if hasattr(path_or_file, "read"):
             name = getattr(path_or_file, "name", "uploaded")
@@ -30,20 +29,13 @@ def load_candidates(path_or_file):
                 return gdf
             elif name.endswith(".csv"):
                 return pd.read_csv(path_or_file)
-            else:
-                st.error("Unsupported file format. Please upload .geojson or .csv.")
-                return None
         else:
             if str(path_or_file).endswith((".geojson", ".json")):
                 gdf = gpd.read_file(path_or_file)
-                if gdf.crs is None:
-                    gdf.set_crs(epsg=4326, inplace=True)
+                gdf.set_crs(epsg=4326, inplace=True)
                 return gdf
             elif str(path_or_file).endswith(".csv"):
                 return pd.read_csv(path_or_file)
-            else:
-                st.error("Unsupported example file format.")
-                return None
     except Exception as e:
         st.error(f"Error loading file: {e}")
         return None
@@ -78,19 +70,24 @@ example_options = {
 }
 selected_example = st.selectbox("Or choose an example", ["None"] + list(example_options.keys()))
 
+# maintain persistent state
 if "candidates" not in st.session_state:
     st.session_state["candidates"] = None
-if "map_mode" not in st.session_state:
-    st.session_state["map_mode"] = "Scatter Map"
 
 if uploaded:
     st.session_state["candidates"] = load_candidates(uploaded)
-    st.session_state["image_path"] = None
 elif selected_example != "None":
     st.session_state["candidates"] = load_candidates(example_options[selected_example])
-    st.session_state["image_path"] = os.path.splitext(example_options[selected_example])[0] + ".png"
 
-tabs = st.tabs(["🗺️ Map View", "📊 Analytics", "ℹ️ About"])
+# Map mode moved OUTSIDE tabs to prevent reset
+st.session_state["map_mode"] = st.radio(
+    "🗺️ Choose map display mode:",
+    ["Scatter Map", "Heatmap", "3D Terrain"],
+    horizontal=True,
+    index=["Scatter Map", "Heatmap", "3D Terrain"].index(st.session_state.get("map_mode", "Scatter Map")),
+)
+
+tabs = st.tabs(["Map", "Analytics", "About"])
 
 candidates = st.session_state["candidates"]
 
@@ -103,12 +100,11 @@ if candidates is not None:
 
     if missing:
         st.warning(f"Missing required columns: {', '.join(missing)}")
-
         if st.button("🧩 Auto-fix missing columns"):
             for col in missing:
-                candidates[col] = np.random.uniform(0.3, 0.8, size=len(candidates))
+                candidates[col] = np.random.uniform(0.3, 0.8, len(candidates))
             st.session_state["candidates"] = candidates
-            st.success("Added missing columns with random default values.")
+            st.success("Added missing columns with random values.")
             missing = []
 
     if not missing:
@@ -118,15 +114,12 @@ if candidates is not None:
             w_g, w_h, w_m, w_l, w_s, theta, lam,
         )
 
-        st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
-
-        # Ensure lat/lon exist for plotting
+        # make sure lat/lon exist
         if "geometry" in candidates:
             gdf = gpd.GeoDataFrame(candidates)
             if gdf.crs is None:
                 gdf.set_crs(epsg=4326, inplace=True)
-            if not all(gdf.geometry.geom_type == "Point"):
-                gdf["geometry"] = gdf.geometry.centroid
+            gdf["geometry"] = gdf.geometry.centroid
             gdf["lat"] = gdf.geometry.y
             gdf["lon"] = gdf.geometry.x
             candidates = gdf
@@ -136,22 +129,19 @@ if candidates is not None:
         else:
             st.warning("No geometry or lat/lon columns found — cannot plot map.")
 
-        # ---------------- MAP VIEW TAB ----------------
-        with tabs[0]:
-            st.subheader("Geospatial Visualization")
+        # drop missing coords
+        candidates = candidates.dropna(subset=["lat", "lon", "S"])
 
-            st.session_state["map_mode"] = st.radio(
-                "Choose map mode:",
-                ["Scatter Map", "Heatmap", "3D Terrain"],
-                horizontal=True,
-                index=["Scatter Map", "Heatmap", "3D Terrain"].index(st.session_state["map_mode"]),
-            )
+        # ---------------- MAP TAB ----------------
+        with tabs[0]:
+            st.subheader("Interactive Map Visualization")
 
             try:
                 if st.session_state["map_mode"] == "Scatter Map":
                     fig = px.scatter_mapbox(
                         candidates,
-                        lat="lat", lon="lon", color="S", size="S",
+                        lat="lat", lon="lon",
+                        color="S", size="S",
                         color_continuous_scale="Viridis",
                         zoom=5, mapbox_style="open-street-map",
                         title="Site Likelihood Scatter Map",
@@ -160,19 +150,19 @@ if candidates is not None:
                 elif st.session_state["map_mode"] == "Heatmap":
                     fig = px.density_mapbox(
                         candidates,
-                        lat="lat", lon="lon", z="S", radius=20,
+                        lat="lat", lon="lon", z="S",
+                        radius=20,
                         center=dict(lat=candidates["lat"].mean(), lon=candidates["lon"].mean()),
                         zoom=5, mapbox_style="open-street-map",
                         color_continuous_scale="YlOrRd",
                         title="Site Likelihood Heatmap",
                     )
 
-                else:  # 3D Terrain Mode
+                else:  # 3D Terrain
                     fig = px.scatter_3d(
                         candidates,
                         x="lon", y="lat", z="S",
-                        color="S",
-                        color_continuous_scale="Viridis",
+                        color="S", color_continuous_scale="Viridis",
                         title="3D Terrain Resonance Map",
                     )
                     fig.update_traces(marker=dict(size=5, opacity=0.8))
@@ -188,41 +178,22 @@ if candidates is not None:
             except Exception as e:
                 st.warning(f"Could not plot map: {e}")
 
-            if st.session_state.get("image_path") and os.path.exists(st.session_state["image_path"]):
-                st.image(Image.open(st.session_state["image_path"]), caption="Associated Site Map", use_container_width=True)
-
         # ---------------- ANALYTICS TAB ----------------
         with tabs[1]:
-            st.subheader("Statistical Overview")
+            st.subheader("📊 Statistical Overview")
             st.dataframe(candidates[required_cols + ["S"]])
-            st.markdown("#### Distribution of Likelihood Scores")
             st.plotly_chart(px.histogram(candidates, x="S", nbins=20, color_discrete_sequence=["#4B9CD3"]), use_container_width=True)
-            st.markdown("#### Component Correlations")
             st.plotly_chart(px.scatter_matrix(candidates, dimensions=required_cols + ["S"], color="S"), use_container_width=True)
-
-            # Export
-            st.markdown("---")
-            st.subheader("💾 Export Results")
-            csv_buffer = BytesIO()
-            candidates.to_csv(csv_buffer, index=False)
-            st.download_button("⬇️ Download as CSV", csv_buffer.getvalue(), "archaeo_resonance_results.csv", "text/csv")
-
-            try:
-                gdf = gpd.GeoDataFrame(candidates)
-                gdf.set_crs(epsg=4326, inplace=True)
-                st.download_button("🌐 Download as GeoJSON", gdf.to_json().encode("utf-8"), "archaeo_resonance_results.geojson", "application/geo+json")
-            except Exception as e:
-                st.warning(f"Could not export GeoJSON: {e}")
 
         # ---------------- ABOUT TAB ----------------
         with tabs[2]:
             st.markdown("""
             ### ℹ️ About Archaeo-Resonance Explorer
-            Integrates multiple modalities — geometry, harmonics, magnetic, LIDAR, symbolic — into a unified logistic fusion model:
+            Combines geometry, harmonics, magnetic, LIDAR, and symbolic signals into a single probabilistic score:
             \[
             S = \frac{1}{1 + e^{-\lambda (w_g G + w_h H + w_m M + w_l L + w_s S_{sym} - \theta)}}
             \]
-            **λ** controls sigmoid steepness, **θ** the bias threshold, and **w\_*** the relative influence of each signal type.
+            **λ** controls sigmoid steepness, **θ** sets bias, and each **w\_*** weights a modality.
             """)
 else:
     st.info("📂 Upload a file or choose an example to begin.")
