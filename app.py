@@ -131,10 +131,43 @@ if candidates is not None:
                 candidates["lat"] = np.random.uniform(35, 40, len(candidates))
                 candidates["lon"] = np.random.uniform(-5, 5, len(candidates))
 
-        tabs = st.tabs(["📊 Scatter", "🔥 Heatmap", "🏔️ 3D Terrain"])
+        # DEM or synthetic elevation
+        if dem_file is not None:
+            st.info("Extracting elevation from uploaded DEM...")
+            candidates["elevation"] = extract_elevation_from_raster(
+                dem_file, candidates["lat"], candidates["lon"]
+            )
+        else:
+            st.info("No DEM uploaded — generating synthetic terrain.")
+            base = np.sin(candidates["lat"] / 2) * 100 + np.cos(candidates["lon"] / 2) * 100
+            candidates["elevation"] = base + np.random.uniform(-20, 20, len(candidates))
+
+        candidates["z"] = candidates["elevation"].fillna(0) + candidates["S"] * 100
+
+        # ---------------------------
+        # Tabs for visualization
+        # ---------------------------
+        tabs = st.tabs(["📊 Data", "📈 Scatter", "🔥 Heatmap", "🏔️ 3D Terrain"])
+
+        # Data Table
+        with tabs[0]:
+            st.subheader("Candidate Site Data")
+            st.dataframe(
+                candidates[["lat", "lon", "G", "H", "M", "L", "Ssym", "S", "elevation"]],
+                use_container_width=True
+            )
+
+            csv = candidates.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "💾 Download Results as CSV",
+                csv,
+                "archaeo_resonance_results.csv",
+                "text/csv",
+                key="download-csv",
+            )
 
         # Scatter Map
-        with tabs[0]:
+        with tabs[1]:
             st.subheader("Scatter Map")
             fig = px.scatter_mapbox(
                 candidates, lat="lat", lon="lon", color="S",
@@ -144,7 +177,7 @@ if candidates is not None:
             st.plotly_chart(fig, use_container_width=True)
 
         # Heatmap View
-        with tabs[1]:
+        with tabs[2]:
             st.subheader("Heatmap View")
             try:
                 fig = px.density_mapbox(
@@ -157,23 +190,8 @@ if candidates is not None:
                 st.warning(f"Could not create heatmap: {e}")
 
         # 3D Terrain View
-        with tabs[2]:
+        with tabs[3]:
             st.subheader("3D Terrain View")
-
-            if dem_file is not None:
-                st.info("Extracting elevation from uploaded DEM...")
-                candidates["elevation"] = extract_elevation_from_raster(
-                    dem_file, candidates["lat"], candidates["lon"]
-                )
-            else:
-                # Synthetic elevation
-                st.info("No DEM uploaded — generating synthetic terrain.")
-                base = np.sin(candidates["lat"] / 2) * 100 + np.cos(candidates["lon"] / 2) * 100
-                candidates["elevation"] = base + np.random.uniform(-20, 20, len(candidates))
-
-            # Combine elevation with S-score
-            candidates["z"] = candidates["elevation"].fillna(0) + candidates["S"] * 100
-
             try:
                 fig = px.scatter_3d(
                     candidates, x="lon", y="lat", z="z",
