@@ -58,13 +58,9 @@ def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
 
 
 # ---------------------------
-# Header and file controls
+# Sidebar controls
 # ---------------------------
 st.title("🌍 Archaeo-Resonance Explorer")
-
-st.markdown(
-    "Upload your candidate site data (`.geojson` or `.csv`) or choose a built-in example to compute and visualize site-likelihood scores."
-)
 
 st.sidebar.header("Fusion Controls")
 w_g = st.sidebar.slider("w_g (geometry)", 0.0, 1.0, 0.18)
@@ -94,16 +90,13 @@ elif selected_example != "None":
     st.session_state["candidates"] = load_candidates(example_options[selected_example])
     st.session_state["image_path"] = os.path.splitext(example_options[selected_example])[0] + ".png"
 
-# ---------------------------
-# Tabs for main content
-# ---------------------------
 tabs = st.tabs(["🗺️ Map View", "📊 Analytics", "ℹ️ About"])
 
-# ---------------------------
-# Main app logic
-# ---------------------------
 candidates = st.session_state["candidates"]
 
+# ---------------------------
+# Main Logic
+# ---------------------------
 if candidates is not None:
     required_cols = ["G", "H", "M", "L", "Ssym"]
     missing = [c for c in required_cols if c not in candidates.columns]
@@ -127,63 +120,78 @@ if candidates is not None:
 
         st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
 
-        # ------------- MAP VIEW TAB -------------
+        # Ensure lat/lon exist for plotting
+        if "geometry" in candidates:
+            gdf = gpd.GeoDataFrame(candidates)
+            if gdf.crs is None:
+                gdf.set_crs(epsg=4326, inplace=True)
+            if not all(gdf.geometry.geom_type == "Point"):
+                gdf["geometry"] = gdf.geometry.centroid
+            gdf["lat"] = gdf.geometry.y
+            gdf["lon"] = gdf.geometry.x
+            candidates = gdf
+        elif {"lat", "lon"}.issubset(candidates.columns):
+            candidates["lat"] = candidates["lat"].astype(float)
+            candidates["lon"] = candidates["lon"].astype(float)
+        else:
+            st.warning("No geometry or lat/lon columns found — cannot plot map.")
+
+        # ---------------- MAP VIEW TAB ----------------
         with tabs[0]:
             st.subheader("Geospatial Visualization")
+
             st.session_state["map_mode"] = st.radio(
                 "Choose map mode:",
-                ["Scatter Map", "Heatmap"],
+                ["Scatter Map", "Heatmap", "3D Terrain"],
                 horizontal=True,
-                index=0 if st.session_state["map_mode"] == "Scatter Map" else 1,
+                index=["Scatter Map", "Heatmap", "3D Terrain"].index(st.session_state["map_mode"]),
             )
 
-            if "geometry" in candidates:
-                try:
-                    gdf = gpd.GeoDataFrame(candidates)
-                    if gdf.crs is None:
-                        gdf.set_crs(epsg=4326, inplace=True)
-                    if not all(gdf.geometry.geom_type == "Point"):
-                        gdf["geometry"] = gdf.geometry.centroid
-                    gdf["lat"] = gdf.geometry.y
-                    gdf["lon"] = gdf.geometry.x
+            try:
+                if st.session_state["map_mode"] == "Scatter Map":
+                    fig = px.scatter_mapbox(
+                        candidates,
+                        lat="lat", lon="lon", color="S", size="S",
+                        color_continuous_scale="Viridis",
+                        zoom=5, mapbox_style="open-street-map",
+                        title="Site Likelihood Scatter Map",
+                    )
 
-                    if st.session_state["map_mode"] == "Scatter Map":
-                        fig = px.scatter_mapbox(
-                            gdf,
-                            lat="lat",
-                            lon="lon",
-                            color="S",
-                            color_continuous_scale="Viridis",
-                            size="S",
-                            zoom=6,
-                            mapbox_style="open-street-map",
-                            title="Site Likelihood Scatter Map",
-                        )
-                    else:
-                        fig = px.density_mapbox(
-                            gdf,
-                            lat="lat",
-                            lon="lon",
-                            z="S",
-                            radius=20,
-                            center=dict(lat=gdf["lat"].mean(), lon=gdf["lon"].mean()),
-                            zoom=6,
-                            mapbox_style="open-street-map",
-                            color_continuous_scale="YlOrRd",
-                            title="Site Likelihood Heatmap",
-                        )
+                elif st.session_state["map_mode"] == "Heatmap":
+                    fig = px.density_mapbox(
+                        candidates,
+                        lat="lat", lon="lon", z="S", radius=20,
+                        center=dict(lat=candidates["lat"].mean(), lon=candidates["lon"].mean()),
+                        zoom=5, mapbox_style="open-street-map",
+                        color_continuous_scale="YlOrRd",
+                        title="Site Likelihood Heatmap",
+                    )
 
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    st.warning(f"Could not plot map: {e}")
-            else:
-                st.info("No geometry found — showing only table view.")
+                else:  # 3D Terrain Mode
+                    fig = px.scatter_3d(
+                        candidates,
+                        x="lon", y="lat", z="S",
+                        color="S",
+                        color_continuous_scale="Viridis",
+                        title="3D Terrain Resonance Map",
+                    )
+                    fig.update_traces(marker=dict(size=5, opacity=0.8))
+                    fig.update_layout(scene=dict(
+                        xaxis_title="Longitude",
+                        yaxis_title="Latitude",
+                        zaxis_title="Likelihood (S)",
+                        aspectmode="cube",
+                    ))
 
-            # Optional PNG overlay
+                st.plotly_chart(fig, use_container_width=True)
+
+            except Exception as e:
+                st.warning(f"Could not plot map: {e}")
+
             if st.session_state.get("image_path") and os.path.exists(st.session_state["image_path"]):
                 st.image(Image.open(st.session_state["image_path"]), caption="Associated Site Map", use_container_width=True)
 
-        # ------------- ANALYTICS TAB -------------
+        # ---------------- ANALYTICS TAB ----------------
         with tabs[1]:
             st.subheader("Statistical Overview")
             st.dataframe(candidates[required_cols + ["S"]])
@@ -192,49 +200,29 @@ if candidates is not None:
             st.markdown("#### Component Correlations")
             st.plotly_chart(px.scatter_matrix(candidates, dimensions=required_cols + ["S"], color="S"), use_container_width=True)
 
-            # Export section
+            # Export
             st.markdown("---")
             st.subheader("💾 Export Results")
-
             csv_buffer = BytesIO()
             candidates.to_csv(csv_buffer, index=False)
-            st.download_button(
-                label="⬇️ Download as CSV",
-                data=csv_buffer.getvalue(),
-                file_name="archaeo_resonance_results.csv",
-                mime="text/csv",
-            )
+            st.download_button("⬇️ Download as CSV", csv_buffer.getvalue(), "archaeo_resonance_results.csv", "text/csv")
 
             try:
                 gdf = gpd.GeoDataFrame(candidates)
                 gdf.set_crs(epsg=4326, inplace=True)
-                geojson_bytes = gdf.to_json().encode("utf-8")
-                st.download_button(
-                    label="🌐 Download as GeoJSON",
-                    data=geojson_bytes,
-                    file_name="archaeo_resonance_results.geojson",
-                    mime="application/geo+json",
-                )
+                st.download_button("🌐 Download as GeoJSON", gdf.to_json().encode("utf-8"), "archaeo_resonance_results.geojson", "application/geo+json")
             except Exception as e:
                 st.warning(f"Could not export GeoJSON: {e}")
 
-        # ------------- ABOUT TAB -------------
+        # ---------------- ABOUT TAB ----------------
         with tabs[2]:
             st.markdown("""
             ### ℹ️ About Archaeo-Resonance Explorer
-            This experimental tool integrates multiple archaeological sensing modalities — geometry, harmonics, magnetic, LIDAR, and symbolic — to compute a unified **site-likelihood score** using a logistic fusion model.
-
-            #### Fusion Formula
+            Integrates multiple modalities — geometry, harmonics, magnetic, LIDAR, symbolic — into a unified logistic fusion model:
             \[
             S = \frac{1}{1 + e^{-\lambda (w_g G + w_h H + w_m M + w_l L + w_s S_{sym} - \theta)}}
             \]
-
-            - **Weights (`w_g` – `w_s`)** represent modality influence.  
-            - **θ (bias)** adjusts sensitivity to detection threshold.  
-            - **λ (sigmoid)** controls the steepness of the logistic curve.
-
-            ---
-            **Developed for exploratory research** in archaeological site prediction and cross-modality resonance modeling.
+            **λ** controls sigmoid steepness, **θ** the bias threshold, and **w\_*** the relative influence of each signal type.
             """)
 else:
     st.info("📂 Upload a file or choose an example to begin.")
