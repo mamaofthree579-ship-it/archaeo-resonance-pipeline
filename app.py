@@ -396,6 +396,15 @@ if candidates is not None:
 
         # About tab
         with tabs[2]:
-            st.markdown("### About\nThis view uses DEM (uploaded or fetched) and S-score to create a combined 3D terrain visualization.\n")
+            st.markdown("""
+            ### About
+            This app combines multisensor archaeological site analysis with DEM-based
+            3D visualization.  
+            - **Upload your own candidate sites** (.geojson or .csv).  
+            - **Optionally upload a DEM** (.tif) for high-accuracy elevation.  
+            - If no DEM is provided, the app can **auto-fetch elevation** using Open-Elevation.  
+            - Final 3D terrain combines actual elevation + site likelihood (S) boost.  
+            """)
+
 else:
-    st.info0
+    st.info("👋 Upload a candidate sites file or select an example from the dropdown to get started.")
