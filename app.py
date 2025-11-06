@@ -45,9 +45,7 @@ def load_candidates(path_or_file):
 # Fusion score computation
 # ---------------------------
 def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
-    Lscore = (
-        w_g * G + w_h * H + w_m * M + w_l * L + w_s * Ssym
-    )
+    Lscore = w_g * G + w_h * H + w_m * M + w_l * L + w_s * Ssym
     S = 1 / (1 + np.exp(-lam * (Lscore - theta)))
     return S
 
@@ -91,12 +89,19 @@ else:
 # Compute & visualize
 # ---------------------------
 if candidates is not None:
-    # Ensure all required columns exist
     required_cols = ["G", "H", "M", "L", "Ssym"]
     missing = [c for c in required_cols if c not in candidates.columns]
+
     if missing:
-        st.error(f"Missing required columns: {', '.join(missing)}")
-    else:
+        st.warning(f"Missing required columns: {', '.join(missing)}")
+
+        if st.button("🧩 Auto-fix missing columns"):
+            for col in missing:
+                candidates[col] = np.random.uniform(0.3, 0.8, size=len(candidates))
+            st.success("Added missing columns with default random values.")
+            missing = []
+
+    if not missing:
         candidates["S"] = compute_S(
             candidates["G"],
             candidates["H"],
@@ -112,31 +117,32 @@ if candidates is not None:
             lam,
         )
 
-        st.success(f"Computed site likelihoods for {len(candidates)} candidates.")
+        st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
 
-        # Show table
-        st.dataframe(candidates[[*required_cols, "S"]])
+        # Show results
+        st.dataframe(candidates[required_cols + ["S"]])
 
-        # Map visualization (if coordinates available)
+        # Map visualization (if geometry available)
         if "geometry" in candidates:
-            # GeoDataFrame from GeoJSON
-            gdf = gpd.GeoDataFrame(candidates)
-            gdf = gdf.set_geometry("geometry")
-            gdf = gdf.to_crs(epsg=4326)
+            try:
+                gdf = gpd.GeoDataFrame(candidates)
+                gdf = gdf.set_geometry("geometry").to_crs(epsg=4326)
 
-            fig = px.scatter_mapbox(
-                gdf,
-                lat=gdf.geometry.y,
-                lon=gdf.geometry.x,
-                color="S",
-                color_continuous_scale="Viridis",
-                size="S",
-                zoom=6,
-                title="Site Likelihood Map",
-                mapbox_style="open-street-map",
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                fig = px.scatter_mapbox(
+                    gdf,
+                    lat=gdf.geometry.y,
+                    lon=gdf.geometry.x,
+                    color="S",
+                    color_continuous_scale="Viridis",
+                    size="S",
+                    zoom=6,
+                    title="🗺️ Site Likelihood Map",
+                    mapbox_style="open-street-map",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Could not plot map: {e}")
         else:
-            st.warning("No geometry column found — skipping map view.")
+            st.info("No geometry found — showing only table view.")
 else:
-    st.info("Upload a file or choose an example to begin.")
+    st.info("📂 Upload a file or choose an example to begin.")
