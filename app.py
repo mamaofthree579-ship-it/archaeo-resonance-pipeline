@@ -4,7 +4,6 @@ import geopandas as gpd
 import numpy as np
 import json
 import plotly.express as px
-import requests
 import rasterio
 
 # ---------------------------
@@ -16,7 +15,7 @@ def load_candidates(path_or_file):
     try:
         if hasattr(path_or_file, "read"):
             name = getattr(path_or_file, "name", "uploaded")
-            if name.endswith(".geojson") or name.endswith(".json"):
+            if name.endswith((".geojson", ".json")):
                 data = json.load(path_or_file)
                 gdf = gpd.GeoDataFrame.from_features(data["features"])
                 return gdf
@@ -40,26 +39,22 @@ def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
     return S
 
 # ---------------------------
-# DEM handling
+# DEM extraction
 # ---------------------------
-def get_elevation(lat, lon):
-    try:
-        url = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return r.json()["results"][0]["elevation"]
-    except Exception:
-        return np.nan
-    return np.nan
-
 def extract_elevation_from_raster(raster_path, lat, lon):
+    elevations = []
     try:
         with rasterio.open(raster_path) as src:
             for la, lo in zip(lat, lon):
-                row, col = src.index(lo, la)
-                yield src.read(1)[row, col]
+                try:
+                    row, col = src.index(lo, la)
+                    val = src.read(1)[row, col]
+                    elevations.append(val)
+                except Exception:
+                    elevations.append(np.nan)
     except Exception:
-        yield np.nan
+        elevations = [np.nan] * len(lat)
+    return elevations
 
 # ---------------------------
 # Streamlit UI
@@ -122,7 +117,7 @@ if candidates is not None:
             w_g, w_h, w_m, w_l, w_s, theta, lam
         )
 
-        # If no geometry, create fake lat/lon grid
+        # Ensure coordinates exist
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates, geometry="geometry", crs="EPSG:4326")
@@ -132,11 +127,10 @@ if candidates is not None:
                 st.warning("Geometry column found but could not extract coordinates.")
         else:
             if "lat" not in candidates or "lon" not in candidates:
-                st.warning("No spatial data found. Generating random coordinates.")
+                st.warning("No spatial data found. Generating synthetic coordinates.")
                 candidates["lat"] = np.random.uniform(35, 40, len(candidates))
                 candidates["lon"] = np.random.uniform(-5, 5, len(candidates))
 
-        # Tabs for map views
         tabs = st.tabs(["📊 Scatter", "🔥 Heatmap", "🏔️ 3D Terrain"])
 
         # Scatter Map
@@ -149,36 +143,37 @@ if candidates is not None:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # Heatmap
+        # Heatmap View
         with tabs[1]:
             st.subheader("Heatmap View")
             try:
                 fig = px.density_mapbox(
                     candidates, lat="lat", lon="lon", z="S",
-                    radius=20, zoom=5, mapbox_style="stamen-terrain",
-                    color_continuous_scale="Plasma"
+                    radius=25, zoom=5, mapbox_style="open-street-map",
+                    color_continuous_scale="Inferno"
                 )
                 st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.warning(f"Could not create heatmap: {e}")
 
-        # 3D Terrain
+        # 3D Terrain View
         with tabs[2]:
             st.subheader("3D Terrain View")
-            candidates["elevation"] = np.nan
 
             if dem_file is not None:
                 st.info("Extracting elevation from uploaded DEM...")
-                candidates["elevation"] = list(extract_elevation_from_raster(
+                candidates["elevation"] = extract_elevation_from_raster(
                     dem_file, candidates["lat"], candidates["lon"]
-                ))
-            else:
-                st.info("Fetching elevation automatically...")
-                candidates["elevation"] = candidates.apply(
-                    lambda r: get_elevation(r["lat"], r["lon"]), axis=1
                 )
+            else:
+                # Synthetic elevation
+                st.info("No DEM uploaded — generating synthetic terrain.")
+                base = np.sin(candidates["lat"] / 2) * 100 + np.cos(candidates["lon"] / 2) * 100
+                candidates["elevation"] = base + np.random.uniform(-20, 20, len(candidates))
 
+            # Combine elevation with S-score
             candidates["z"] = candidates["elevation"].fillna(0) + candidates["S"] * 100
+
             try:
                 fig = px.scatter_3d(
                     candidates, x="lon", y="lat", z="z",
@@ -189,12 +184,5 @@ if candidates is not None:
             except Exception as e:
                 st.warning(f"Could not render 3D terrain: {e}")
 
-        # About tab
-        st.markdown("""
-        ### About
-        This app combines multi-sensor archaeological fusion scoring with real-world terrain elevation.
-        You can upload candidate sites (.geojson / .csv) and optional DEMs (.tif / .asc) to visualize resonance likelihoods.
-        """)
-
 else:
-    st.info("👋 Upload a candidate sites file or select an example from the dropdown to get started.")
+    st.info("👋 Upload a candidate sites file or select an example to get started.")
