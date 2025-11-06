@@ -5,6 +5,7 @@ import json
 import numpy as np
 import plotly.express as px
 import os
+from shapely.geometry import Point
 from PIL import Image
 
 # ---------------------------
@@ -22,7 +23,7 @@ def load_candidates(path_or_file):
             if name.endswith(".geojson") or name.endswith(".json"):
                 data = json.load(path_or_file)
                 gdf = gpd.GeoDataFrame.from_features(data["features"])
-                gdf.crs = "EPSG:4326"  # Default to WGS84
+                gdf.crs = "EPSG:4326"  # default WGS84
                 return gdf
             elif name.endswith(".csv"):
                 return pd.read_csv(path_or_file)
@@ -30,8 +31,7 @@ def load_candidates(path_or_file):
                 st.error("Unsupported file format. Please upload .geojson or .csv.")
                 return None
         else:
-            # Local file path
-            if str(path_or_file).endswith(".geojson") or str(path_or_file).endswith(".json"):
+            if str(path_or_file).endswith((".geojson", ".json")):
                 gdf = gpd.read_file(path_or_file)
                 if gdf.crs is None:
                     gdf.set_crs(epsg=4326, inplace=True)
@@ -51,8 +51,7 @@ def load_candidates(path_or_file):
 # ---------------------------
 def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
     Lscore = w_g * G + w_h * H + w_m * M + w_l * L + w_s * Ssym
-    S = 1 / (1 + np.exp(-lam * (Lscore - theta)))
-    return S
+    return 1 / (1 + np.exp(-lam * (Lscore - theta)))
 
 
 # ---------------------------
@@ -128,17 +127,25 @@ if candidates is not None:
         st.success(f"✅ Computed site likelihoods for {len(candidates)} candidates.")
         st.dataframe(candidates[required_cols + ["S"]])
 
-        # Map visualization (if geometry available)
+        # Map visualization (handle all geometry types)
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates)
                 if gdf.crs is None:
                     gdf.set_crs(epsg=4326, inplace=True)
 
+                # If not points, use centroids
+                if not all(gdf.geometry.geom_type == "Point"):
+                    gdf["geometry"] = gdf.geometry.centroid
+
+                # Extract coordinates for plotting
+                gdf["lat"] = gdf.geometry.y
+                gdf["lon"] = gdf.geometry.x
+
                 fig = px.scatter_mapbox(
                     gdf,
-                    lat=gdf.geometry.y,
-                    lon=gdf.geometry.x,
+                    lat="lat",
+                    lon="lon",
                     color="S",
                     color_continuous_scale="Viridis",
                     size="S",
@@ -152,7 +159,7 @@ if candidates is not None:
         else:
             st.info("No geometry found — showing only table view.")
 
-        # Optional image preview
+        # Optional PNG overlay preview
         if image_path and os.path.exists(image_path):
             st.image(Image.open(image_path), caption="Associated Site Map", use_container_width=True)
 else:
