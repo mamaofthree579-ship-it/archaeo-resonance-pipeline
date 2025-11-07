@@ -147,7 +147,7 @@ if candidates is not None:
         # ---------------------------
         # Tabs for visualization
         # ---------------------------
-        tabs = st.tabs(["📊 Data", "📈 Scatter", "🔥 Heatmap", "🏔️ 3D Terrain"])
+        tabs = st.tabs(["📊 Data", "📈 Scatter", "🔥 Heatmap", "🏔️ 3D Terrain", "📉 Feature Importance"])
 
         # Data Table
         with tabs[0]:
@@ -201,6 +201,25 @@ if candidates is not None:
                 st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.warning(f"Could not render 3D terrain: {e}")
+
+        # Feature Importance Visualization
+        with tabs[4]:
+            st.subheader("Feature Importance (Weight Contribution)")
+            weights = {
+                "Geometry (w_g)": w_g,
+                "Harmonics (w_h)": w_h,
+                "Magnetic (w_m)": w_m,
+                "LIDAR (w_l)": w_l,
+                "Symbolic (w_s)": w_s,
+            }
+            df_weights = pd.DataFrame(list(weights.items()), columns=["Feature", "Weight"])
+            fig = px.bar(
+                df_weights, x="Feature", y="Weight",
+                color="Weight", color_continuous_scale="Viridis",
+                title="Relative Contribution of Each Feature"
+            )
+            fig.update_layout(yaxis_range=[0, 1])
+            st.plotly_chart(fig, use_container_width=True)
 
 else:
     st.info("👋 Upload a candidate sites file or select an example to get started.")
