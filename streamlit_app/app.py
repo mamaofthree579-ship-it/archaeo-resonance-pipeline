@@ -30,6 +30,7 @@ def load_candidates(path_or_file):
         st.error(f"Error loading file: {e}")
         return None
 
+
 # ---------------------------
 # Fusion computation
 # ---------------------------
@@ -37,6 +38,7 @@ def compute_S(G, H, M, L, Ssym, w_g, w_h, w_m, w_l, w_s, theta, lam):
     Lscore = w_g * G + w_h * H + w_m * M + w_l * L + w_s * Ssym
     S = 1 / (1 + np.exp(-lam * (Lscore - theta)))
     return S
+
 
 # ---------------------------
 # DEM extraction
@@ -55,6 +57,7 @@ def extract_elevation_from_raster(raster_path, lat, lon):
     except Exception:
         elevations = [np.nan] * len(lat)
     return elevations
+
 
 # ---------------------------
 # Streamlit UI
@@ -95,6 +98,7 @@ elif selected_example != "None":
 else:
     candidates = None
 
+
 # ---------------------------
 # Main logic
 # ---------------------------
@@ -117,7 +121,7 @@ if candidates is not None:
             w_g, w_h, w_m, w_l, w_s, theta, lam
         )
 
-        # Ensure coordinates exist
+        # Ensure coordinates
         if "geometry" in candidates:
             try:
                 gdf = gpd.GeoDataFrame(candidates, geometry="geometry", crs="EPSG:4326")
@@ -145,18 +149,23 @@ if candidates is not None:
         candidates["z"] = candidates["elevation"].fillna(0) + candidates["S"] * 100
 
         # ---------------------------
-        # Tabs for visualization
+        # Tabs
         # ---------------------------
-        tabs = st.tabs(["📊 Data", "📈 Scatter", "🔥 Heatmap", "🏔️ 3D Terrain", "📉 Feature Importance"])
+        tabs = st.tabs([
+            "📊 Data",
+            "📈 Scatter",
+            "🔥 Heatmap",
+            "🏔️ 3D Terrain",
+            "📉 Feature Importance",
+        ])
 
-        # Data Table
+        # 📊 Data Tab
         with tabs[0]:
             st.subheader("Candidate Site Data")
             st.dataframe(
                 candidates[["lat", "lon", "G", "H", "M", "L", "Ssym", "S", "elevation"]],
                 use_container_width=True
             )
-
             csv = candidates.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "💾 Download Results as CSV",
@@ -166,7 +175,7 @@ if candidates is not None:
                 key="download-csv",
             )
 
-        # Scatter Map
+        # 📈 Scatter Tab
         with tabs[1]:
             st.subheader("Scatter Map")
             fig = px.scatter_mapbox(
@@ -176,7 +185,7 @@ if candidates is not None:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # Heatmap View
+        # 🔥 Heatmap Tab
         with tabs[2]:
             st.subheader("Heatmap View")
             try:
@@ -189,7 +198,7 @@ if candidates is not None:
             except Exception as e:
                 st.warning(f"Could not create heatmap: {e}")
 
-        # 3D Terrain View
+        # 🏔️ 3D Terrain Tab
         with tabs[3]:
             st.subheader("3D Terrain View")
             try:
@@ -202,7 +211,7 @@ if candidates is not None:
             except Exception as e:
                 st.warning(f"Could not render 3D terrain: {e}")
 
-        # Feature Importance Visualization
+        # 📉 Feature Importance Tab
         with tabs[4]:
             st.subheader("Feature Importance (Weight Contribution)")
             weights = {
@@ -220,6 +229,22 @@ if candidates is not None:
             )
             fig.update_layout(yaxis_range=[0, 1])
             st.plotly_chart(fig, use_container_width=True)
+
+            # Compute actual average contribution
+            candidates["geometry_contrib"] = w_g * candidates["G"]
+            candidates["harmonics_contrib"] = w_h * candidates["H"]
+            candidates["magnetic_contrib"] = w_m * candidates["M"]
+            candidates["lidar_contrib"] = w_l * candidates["L"]
+            candidates["symbolic_contrib"] = w_s * candidates["Ssym"]
+
+            contrib_means = candidates[
+                ["geometry_contrib", "harmonics_contrib", "magnetic_contrib", "lidar_contrib", "symbolic_contrib"]
+            ].mean().reset_index()
+
+            contrib_means.columns = ["Feature", "Avg Contribution"]
+
+            st.markdown("#### Average Feature Contribution to Site Likelihood (Across Dataset)")
+            st.dataframe(contrib_means, use_container_width=True)
 
 else:
     st.info("👋 Upload a candidate sites file or select an example to get started.")
