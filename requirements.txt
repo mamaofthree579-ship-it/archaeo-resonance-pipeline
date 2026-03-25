@@ -16,3 +16,4 @@ streamlit-folium
 plotly.express
 rasterio
 requests
+matplotlib
