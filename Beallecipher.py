@@ -41,3 +41,10 @@ st.pyplot(fig)
 if st.button("Run AI Feature Extraction"):
     st.success("Anomaly detected! Symmetrical geometric depression found at offset +0.5m.")
     st.info("Cross-referencing with Ward & Morriss Masonic records...")
+
+SELECT MemberName, MasonicTitle, YearActive 
+FROM GrandLodgeVA_Records
+WHERE City = 'Lynchburg' 
+  AND YearActive BETWEEN 1820 AND 1885
+  AND (MemberName LIKE '%Ward%' OR MemberName LIKE '%Morriss%')
+  AND Title IN ('Senior Warden', 'Master Architect', 'Past Master');
