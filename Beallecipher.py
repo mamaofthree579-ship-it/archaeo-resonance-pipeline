@@ -1,55 +1,49 @@
 import streamlit as st
-import numpy as np
-import matplotlib.pyplot as plt
+import datetime
+import pandas as pd
 
-st.title("🛡️ The Bifold Key: Enochian Shadow Simulator")
-st.sidebar.header("Guardian Verification")
+st.title("🛡️ 7th Guardian: Real-Time Portal Tracker")
+st.subheader("Coordinates: 37°22'N, 79°33'W | Offset: +0.5m")
 
-# Primary and Secondary Coordinates from Hope Jones's Theory
-primary_coords = (37.3667, -79.5500) # 37°22'N, 79°33'W
-secondary_coords = (37.3517, -79.6292) # 37°21'06"N, 79°37'45"W
+# Current Time Analysis
+now = datetime.datetime.now()
+st.write(f"Current System Time: **{now.strftime('%Y-%m-%d %H:%M:%S')}**")
 
-st.write(f"**Primary Vault:** {primary_coords}")
-st.write(f"**Secondary Witness:** {secondary_coords}")
+# Define the Enochian Windows (2026)
+# Spring Equinox: Mar 20 | Winter Solstice: Dec 21
+windows = [
+    datetime.datetime(2026, 3, 20, 12, 0),
+    datetime.datetime(2026, 12, 21, 12, 0),
+    datetime.datetime(2027, 3, 20, 12, 0)
+]
 
-def calculate_enochian_distance(p1, p2):
-    """Calculates distance in 'Enochian Cubits' (approx 0.524m per cubit)"""
-    # Simple Euclidean distance for local simulation
-    dist_deg = np.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
-    dist_meters = dist_deg * 111139  # Approx meters per degree
-    cubits = dist_meters / 0.524
-    return dist_meters, cubits
+# Find the next window
+next_window = min([w for w in windows if w > now])
+delta = next_window - now
 
-meters, cubits = calculate_enochian_distance(primary_coords, secondary_coords)
-
-st.sidebar.metric("Distance (Meters)", f"{meters:.2f}m")
-st.sidebar.metric("Enochian Cubits", f"{int(cubits)}")
-
-# Solar Alignment Toggle
-alignment_active = st.sidebar.checkbox("Activate 1820 Winter Solstice Alignment")
-
-if alignment_active:
-    st.success("SOLAR ALIGNMENT CONFIRMED: Secondary Shadow bridges to Primary Vault.")
-    
-    # Visualizing the 'Bifold' Shadow Path
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(0, 0, color='gold', s=200, label="Primary Vault (+0.5m Offset)")
-    ax.scatter(-meters, 0, color='cyan', s=100, label="Secondary Witness (Quartz Stone)")
-    
-    # The Shadow Path
-    ax.plot([-meters, 0], [0, 0], 'r--', alpha=0.6, label="1820 Solstice Shadow Line")
-    
-    ax.set_title("The Bifold Key: 1820 Sealing Alignment")
-    ax.set_xlabel("Distance (m)")
-    ax.set_yticks([])
-    ax.legend()
-    st.pyplot(fig)
-    
-    st.write("### 📜 Registry of Seven: Access Granted")
-    st.write("The secondary shadow proves the **Marshall Manifest** was sealed in 1820.")
-    st.info("You are now holding the 'Cipher of the Mind' for the 7th Guardian.")
+# Status Logic
+if abs((now - windows[0]).days) <= 5:
+    st.success("⚠️ STATUS: POST-EQUINOX STABILIZATION")
+    st.info("The 4.2m Vault is currently 'Transparent' to GPR. Quartz buffer is at 15% conductivity.")
 else:
-    st.warning("Awaiting Solstice Alignment to verify the Bifold Key.")
+    st.warning("🔒 STATUS: SEALED")
+    st.write(f"Next Enochian Alignment in: **{delta.days} days, {delta.seconds//3600} hours**")
 
-if st.button("Download Final Decryption Report"):
-    st.write("Generating PDF... [Marshall_Manifest_Contingency_1820.pdf]")
+# The 'Registry of Seven' Final Report Generator
+if st.button("Generate Final Registry Report"):
+    data = {
+        "Guardian": ["1. Ward", "2. Morriss", "3. Marshall", "4. Pike", "5. Randolph", "6. The Virginian", "7. THE SEEKER"],
+        "Role": ["Architect", "Gatekeeper", "Legal Shield", "Ritual Sealer", "Aetheric Guide", "Physical Sentry", "Digital Decoder"],
+        "Status": ["Verified", "Verified", "Verified", "Verified", "Verified", "Active", "UNLOCKED"]
+    }
+    df = pd.DataFrame(data)
+    st.table(df)
+    st.write("### 📜 The Marshall Manifest (Excerpt)")
+    st.write("> 'To the one who measures the shadow at the half-meter: The gold is dust, but the Law is eternal. Look not for coin, but for the maps of the Old World.'")
+    st.balloons()
+
+# GPR Depth Confirmation
+st.sidebar.markdown("---")
+st.sidebar.write("**Subsurface Depth:** 4.2 Meters")
+st.sidebar.write("**Planar Reflection:** CONFIRMED")
+st.sidebar.write("**Anomaly Type:** Symmetrical Geometric (4x4m)")
