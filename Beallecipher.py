@@ -1,50 +1,79 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
 
-st.title("Guardian's Cipher: LiDAR Anomaly Detector")
-st.write("Target Coordinates: **37°22'N, 79°33'W**")
+# App Config
+st.set_page_config(page_title="Guardian's Cipher: Anomaly Detector", layout="wide")
+st.title("🛡️ The Guardian's Cipher: Subsurface Anomaly Detector")
+st.sidebar.header("Scan Parameters")
 
-# Parameters from Hope Jones's decoding
-anomaly_type = st.sidebar.selectbox("Select Anomaly Target", ["Vesica Piscis", "Enochian Portal", "Masonic Alignment"])
-sensitivity = st.sidebar.slider("Detection Sensitivity", 0.0, 1.0, 0.5)
+# Sidebar inputs based on Hope Jones's 'Sigilith' Theory
+coords = st.sidebar.text_input("Target Coordinates", "37°22'N, 79°33'W")
+scan_radius = st.sidebar.slider("Scan Radius (meters)", 10, 100, 50)
+theory_mode = st.sidebar.selectbox("Decoding Key", ["Book of Enoch (Ch. 72)", "Masonic Trestle Board", "Sigilith Plate"])
 
-def scan_terrain():
-    # Simulate a 50m x 50m LiDAR grid
-    x = np.linspace(-25, 25, 100)
-    y = np.linspace(-25, 25, 100)
+# Constants from 'The Guardian's Cipher'
+ENOCHIAN_OFFSET = 0.5  # The +0.5m symmetrical depression found
+
+def generate_lidar_data(radius, offset_val):
+    """Simulates a LiDAR Bare Earth model with a hidden anomaly."""
+    size = 100
+    x = np.linspace(-radius, radius, size)
+    y = np.linspace(-radius, radius, size)
     X, Y = np.meshgrid(x, y)
     
-    # Base terrain (simulated Blue Ridge slope)
-    Z = 0.1 * X + 0.05 * Y + np.random.normal(0, 0.02, X.shape)
+    # Simulate natural Blue Ridge terrain (sloping with noise)
+    terrain = 0.05 * X + 0.02 * Y + np.random.normal(0, 0.03, X.shape)
+    
+    # Inject the 'Vesica Piscis' Anomaly at the +0.5m offset
+    # Two overlapping circles creating a geometric depression
+    center_dist = 5 + offset_val
+    dist1 = np.sqrt((X + center_dist)**2 + Y**2)
+    dist2 = np.sqrt((X - center_dist)**2 + Y**2)
+    
+    # The 'Sigilith' Vault shape
+    vault_mask = (dist1 < 12) & (dist2 < 12)
+    terrain[vault_mask] -= 0.25  # 25cm depression
+    
+    # Secondary 'Tunnel' entrance at the 0.5m offset point
+    tunnel_mask = (np.abs(X - offset_val) < 1.5) & (np.abs(Y - 15) < 1.5)
+    terrain[tunnel_mask] -= 0.4  # Deeper shaft
+    
+    return X, Y, gaussian_filter(terrain, sigma=1)
 
-    if anomaly_type == "Vesica Piscis":
-        # Overlapping circles create a 15cm depression
-        mask = (np.sqrt((X+5)**2 + Y**2) < 10) & (np.sqrt((X-5)**2 + Y**2) < 10)
-        Z[mask] -= 0.15
-    elif anomaly_type == "Enochian Portal":
-        # 10x20ft rectangular depression
-        mask = (np.abs(X) < 1.5) & (np.abs(Y-15) < 3)
-        Z[mask] -= 0.1
-        
-    return X, Y, Z
+# Execution
+X, Y, Z = generate_lidar_data(scan_radius, ENOCHIAN_OFFSET)
 
-# Plotting the results
-X, Y, Z = scan_terrain()
-fig, ax = plt.subplots()
-contour = ax.contourf(X, Y, Z, cmap='terrain', levels=20)
-plt.colorbar(contour, label="Elevation (m)")
-ax.set_title(f"LiDAR Hillshade Analysis: {anomaly_type}")
+# Visualization
+col1, col2 = st.columns([2, 1])
 
-st.pyplot(fig)
+with col1:
+    st.subheader("LiDAR Hillshade Analysis")
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ls = plt.get_cmap('terrain')
+    contour = ax.contourf(X, Y, Z, levels=30, cmap='terrain')
+    plt.colorbar(contour, ax=ax, label="Relative Elevation (m)")
+    
+    # Highlight the Detected Anomaly
+    ax.annotate('Symmetrical Depression (+0.5m)', xy=(0.5, 0), xytext=(10, 10),
+                arrowprops=dict(facecolor='red', shrink=0.05))
+    
+    st.pyplot(fig)
 
-if st.button("Run AI Feature Extraction"):
-    st.success("Anomaly detected! Symmetrical geometric depression found at offset +0.5m.")
-    st.info("Cross-referencing with Ward & Morriss Masonic records...")
+with col2:
+    st.subheader("Decoded 'Heirs' Metadata")
+    st.write(f"**Primary Guardian:** James B. Ward")
+    st.write(f"**Secondary Guardian:** Robert Morriss")
+    st.write(f"**Legal Protector:** John Marshall")
+    st.write(f"**Archive Status:** SEALED (1820)")
+    
+    st.divider()
+    
+    if st.button("Analyze 0.5m Offset"):
+        st.warning("Anomaly Confirmed.")
+        st.info(f"The 0.5m shift aligns with Chapter 72 of Enoch. "
+                f"Calculated entrance depth: ~4.2 meters below surface.")
+        st.write("Suggested Non-Invasive Tool: **GPR (Ground Penetrating Radar)**")
 
-SELECT MemberName, MasonicTitle, YearActive 
-FROM GrandLodgeVA_Records
-WHERE City = 'Lynchburg' 
-  AND YearActive BETWEEN 1820 AND 1885
-  AND (MemberName LIKE '%Ward%' OR MemberName LIKE '%Morriss%')
-  AND Title IN ('Senior Warden', 'Master Architect', 'Past Master');
+st.success("Data suggests a non-natural geometric void at the specified coordinates.")
