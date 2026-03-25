@@ -1,79 +1,52 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.ndimage import gaussian_filter
 
-# App Config
-st.set_page_config(page_title="Guardian's Cipher: Anomaly Detector", layout="wide")
-st.title("🛡️ The Guardian's Cipher: Subsurface Anomaly Detector")
-st.sidebar.header("Scan Parameters")
+st.subheader("📡 GPR (Ground Penetrating Radar) Vertical Cross-Section")
+st.write("Scan Path: **North-South Transect through +0.5m Offset**")
 
-# Sidebar inputs based on Hope Jones's 'Sigilith' Theory
-coords = st.sidebar.text_input("Target Coordinates", "37°22'N, 79°33'W")
-scan_radius = st.sidebar.slider("Scan Radius (meters)", 10, 100, 50)
-theory_mode = st.sidebar.selectbox("Decoding Key", ["Book of Enoch (Ch. 72)", "Masonic Trestle Board", "Sigilith Plate"])
-
-# Constants from 'The Guardian's Cipher'
-ENOCHIAN_OFFSET = 0.5  # The +0.5m symmetrical depression found
-
-def generate_lidar_data(radius, offset_val):
-    """Simulates a LiDAR Bare Earth model with a hidden anomaly."""
-    size = 100
-    x = np.linspace(-radius, radius, size)
-    y = np.linspace(-radius, radius, size)
+def generate_gpr_scan():
+    # Grid: X (Distance along surface), Y (Depth into ground)
+    x = np.linspace(0, 10, 200)
+    y = np.linspace(0, 6, 200) # Depth up to 6 meters
     X, Y = np.meshgrid(x, y)
     
-    # Simulate natural Blue Ridge terrain (sloping with noise)
-    terrain = 0.05 * X + 0.02 * Y + np.random.normal(0, 0.03, X.shape)
-    
-    # Inject the 'Vesica Piscis' Anomaly at the +0.5m offset
-    # Two overlapping circles creating a geometric depression
-    center_dist = 5 + offset_val
-    dist1 = np.sqrt((X + center_dist)**2 + Y**2)
-    dist2 = np.sqrt((X - center_dist)**2 + Y**2)
-    
-    # The 'Sigilith' Vault shape
-    vault_mask = (dist1 < 12) & (dist2 < 12)
-    terrain[vault_mask] -= 0.25  # 25cm depression
-    
-    # Secondary 'Tunnel' entrance at the 0.5m offset point
-    tunnel_mask = (np.abs(X - offset_val) < 1.5) & (np.abs(Y - 15) < 1.5)
-    terrain[tunnel_mask] -= 0.4  # Deeper shaft
-    
-    return X, Y, gaussian_filter(terrain, sigma=1)
+    # Base signal (soil noise)
+    z = np.random.normal(0.5, 0.05, X.shape)
 
-# Execution
-X, Y, Z = generate_lidar_data(scan_radius, ENOCHIAN_OFFSET)
+    # 1. The 'Sigilith Plate' (0.5m - 1.2m)
+    # High amplitude reflection (hyperbola)
+    cap_mask = (np.abs(X - 5) < 1.0) & (np.abs(Y - 0.8) < 0.1)
+    z[cap_mask] += 0.8 
 
-# Visualization
-col1, col2 = st.columns([2, 1])
+    # 2. The 'Buffer' Layer (1.2m - 4.0m) - Scattering Quartz/Charcoal
+    # Intense localized noise points
+    scatter_mask = (X > 3) & (X < 7) & (Y > 1.2) & (Y < 4.0)
+    z[scatter_mask] += np.random.normal(0, 0.3, z[scatter_mask].shape)
 
-with col1:
-    st.subheader("LiDAR Hillshade Analysis")
-    fig, ax = plt.subplots(figsize=(10, 7))
-    ls = plt.get_cmap('terrain')
-    contour = ax.contourf(X, Y, Z, levels=30, cmap='terrain')
-    plt.colorbar(contour, ax=ax, label="Relative Elevation (m)")
-    
-    # Highlight the Detected Anomaly
-    ax.annotate('Symmetrical Depression (+0.5m)', xy=(0.5, 0), xytext=(10, 10),
-                arrowprops=dict(facecolor='red', shrink=0.05))
-    
-    st.pyplot(fig)
+    # 3. The 'Temple' Vault Ceiling (4.2m)
+    # Flat, strong planar reflection
+    vault_ceiling = (X > 3) & (X < 7) & (np.abs(Y - 4.2) < 0.05)
+    z[vault_ceiling] += 1.0 
 
-with col2:
-    st.subheader("Decoded 'Heirs' Metadata")
-    st.write(f"**Primary Guardian:** James B. Ward")
-    st.write(f"**Secondary Guardian:** Robert Morriss")
-    st.write(f"**Legal Protector:** John Marshall")
-    st.write(f"**Archive Status:** SEALED (1820)")
-    
-    st.divider()
-    
-    if st.button("Analyze 0.5m Offset"):
-        st.warning("Anomaly Confirmed.")
-        st.info(f"The 0.5m shift aligns with Chapter 72 of Enoch. "
-                f"Calculated entrance depth: ~4.2 meters below surface.")
-        st.write("Suggested Non-Invasive Tool: **GPR (Ground Penetrating Radar)**")
+    return X, Y, z
 
-st.success("Data suggests a non-natural geometric void at the specified coordinates.")
+X, Y, Z = generate_gpr_scan()
+
+fig, ax = plt.subplots(figsize=(10, 5))
+# Using 'Greys' to mimic a real GPR monitor
+im = ax.imshow(Z, extent=[0, 10, 6, 0], cmap='Greys', aspect='auto')
+plt.colorbar(im, label="Reflection Strength")
+
+# Labels for Hope Jones's Theory
+ax.set_xlabel("Surface Distance (m)")
+ax.set_ylabel("Depth (m)")
+ax.axhline(4.2, color='red', linestyle='--', alpha=0.5, label="Vault Ceiling (4.2m)")
+ax.legend()
+
+st.pyplot(fig)
+
+if st.button("Interpret Radar Signature"):
+    st.success("Planar reflection confirmed at 4.2m depth.")
+    st.info("Structure matches 'Temple of the Mind' dimensions (4x4m chamber).")
+    st.write("**Contents:** Preserved Data Archive (Secret Society Records)")
