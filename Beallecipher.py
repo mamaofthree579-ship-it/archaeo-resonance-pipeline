@@ -1,56 +1,55 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import datetime
 
-st.header("🌞 Enochian Solar Alignment Simulator")
-st.write("Target Date: **Spring Equinox (March 21st)**")
+st.title("🛡️ The Bifold Key: Enochian Shadow Simulator")
+st.sidebar.header("Guardian Verification")
 
-# Theory Parameters
-target_date = st.sidebar.date_input("Alignment Date", datetime.date(2026, 3, 21))
-time_of_day = st.sidebar.slider("Time (Solar Noon focus)", 8, 16, 12)
+# Primary and Secondary Coordinates from Hope Jones's Theory
+primary_coords = (37.3667, -79.5500) # 37°22'N, 79°33'W
+secondary_coords = (37.3517, -79.6292) # 37°21'06"N, 79°37'45"W
 
-def simulate_solar_shadow(hour):
-    # Create the Vesica Piscis surface again
-    x = np.linspace(-10, 10, 100)
-    y = np.linspace(-10, 10, 100)
-    X, Y = np.meshgrid(x, y)
+st.write(f"**Primary Vault:** {primary_coords}")
+st.write(f"**Secondary Witness:** {secondary_coords}")
+
+def calculate_enochian_distance(p1, p2):
+    """Calculates distance in 'Enochian Cubits' (approx 0.524m per cubit)"""
+    # Simple Euclidean distance for local simulation
+    dist_deg = np.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+    dist_meters = dist_deg * 111139  # Approx meters per degree
+    cubits = dist_meters / 0.524
+    return dist_meters, cubits
+
+meters, cubits = calculate_enochian_distance(primary_coords, secondary_coords)
+
+st.sidebar.metric("Distance (Meters)", f"{meters:.2f}m")
+st.sidebar.metric("Enochian Cubits", f"{int(cubits)}")
+
+# Solar Alignment Toggle
+alignment_active = st.sidebar.checkbox("Activate 1820 Winter Solstice Alignment")
+
+if alignment_active:
+    st.success("SOLAR ALIGNMENT CONFIRMED: Secondary Shadow bridges to Primary Vault.")
     
-    # The Vesica Piscis Depression
-    dist1 = np.sqrt((X + 4)**2 + Y**2)
-    dist2 = np.sqrt((X - 4)**2 + Y**2)
-    vesica = (dist1 < 8) & (dist2 < 8)
-    Z = np.zeros_like(X)
-    Z[vesica] = -0.2  # 20cm surface depression
+    # Visualizing the 'Bifold' Shadow Path
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(0, 0, color='gold', s=200, label="Primary Vault (+0.5m Offset)")
+    ax.scatter(-meters, 0, color='cyan', s=100, label="Secondary Witness (Quartz Stone)")
     
-    # Calculate shadow angle based on hour (12 = vertical/noon)
-    # At Solar Noon on the Equinox at 37°N, the angle is specific
-    shadow_offset = (hour - 12) * 2.0
-    shadow_mask = (np.abs(X - shadow_offset) < 0.3) & (np.abs(Y) < 5)
+    # The Shadow Path
+    ax.plot([-meters, 0], [0, 0], 'r--', alpha=0.6, label="1820 Solstice Shadow Line")
     
-    return X, Y, Z, shadow_mask
-
-X, Y, Z, shadow = simulate_solar_shadow(time_of_day)
-
-fig, ax = plt.subplots(figsize=(8, 8))
-ax.contourf(X, Y, Z, cmap='copper', alpha=0.6) # Terrain
-ax.contourf(X, Y, shadow, cmap='binary', alpha=0.9) # The Shadow "Key"
-
-# Mark the +0.5m Anomaly
-ax.scatter([0.5], [0], color='cyan', s=100, label="Sigilith Plate (+0.5m)")
-ax.set_title(f"Solar Alignment at {time_of_day}:00")
-ax.legend()
-
-st.pyplot(fig)
-
-# The "Activation" Logic
-if time_of_day == 12 and target_date.month == 3 and target_date.day == 21:
-    st.balloons()
-    st.success("ALIGNMENT CONFIRMED: Shadow bisects the +0.5m Offset.")
-    st.info("The 'Enochian Portal' is active. Quartz buffer conductivity is at minimum.")
-    st.write("### 📜 Decrypted Documents Accessible:")
-    st.write("- **The Marshall Manifest**: 1820 Constitutional Contingency")
-    st.write("- **The Enochian Map**: Pre-Columbian Blue Ridge Settlements")
-    st.write("- **The Registry of Seven**: Final lineage of the Guardians")
+    ax.set_title("The Bifold Key: 1820 Sealing Alignment")
+    ax.set_xlabel("Distance (m)")
+    ax.set_yticks([])
+    ax.legend()
+    st.pyplot(fig)
+    
+    st.write("### 📜 Registry of Seven: Access Granted")
+    st.write("The secondary shadow proves the **Marshall Manifest** was sealed in 1820.")
+    st.info("You are now holding the 'Cipher of the Mind' for the 7th Guardian.")
 else:
-    st.warning("Alignment Pending. The shadow is not yet centered on the Sigilith Plate.")
+    st.warning("Awaiting Solstice Alignment to verify the Bifold Key.")
+
+if st.button("Download Final Decryption Report"):
+    st.write("Generating PDF... [Marshall_Manifest_Contingency_1820.pdf]")
